@@ -67,4 +67,8 @@ public:
 	CString linenum;
 	void C剧情处理Dlg::GetSourceCode(CString url);
 	CButton m_issource;
+	CString Cururl;
+	CStatic m_cururl;
+	afx_msg void OnStnClickedCurtext();
+	CString cururl;
 };

@@ -63,6 +63,8 @@ C剧情处理Dlg::C剧情处理Dlg(CWnd* pParent /*=nullptr*/)
 	, m_adddescription(_T(""))
 	, m_text(_T(""))
 	, linenum(_T(""))
+	, Cururl(_T(""))
+	, cururl(_T(""))
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
@@ -83,6 +85,9 @@ void C剧情处理Dlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_TEXT, m_intro);
 	DDX_Text(pDX, IDC_LINENUM, linenum);
 	DDX_Control(pDX, IDC_CHECK2, m_issource);
+	DDX_Text(pDX, IDC_CurTEXT, Cururl);
+	DDX_Control(pDX, IDC_CurTEXT, m_cururl);
+	DDX_Text(pDX, IDC_EDIT4, cururl);
 }
 
 BEGIN_MESSAGE_MAP(C剧情处理Dlg, CDialogEx)
@@ -99,6 +104,7 @@ BEGIN_MESSAGE_MAP(C剧情处理Dlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUTTON5, &C剧情处理Dlg::OnBnClickedButton5)
 	ON_EN_CHANGE(IDC_EDIT3, &C剧情处理Dlg::OnEnChangeEdit3)
 	ON_STN_CLICKED(IDC_LINENUM, &C剧情处理Dlg::OnStnClickedLinenum)
+	ON_STN_CLICKED(IDC_CurTEXT, &C剧情处理Dlg::OnStnClickedCurtext)
 END_MESSAGE_MAP()
 
 
@@ -215,10 +221,15 @@ void C剧情处理Dlg::OnBnClickedButton1()
 		index = url.Find(TEXT(" "));
 		url.Replace(TEXT(" "), TEXT("_"));
 	}
-	rurl = TEXT("https://prts.wiki/index.php?title=");
+	rurl = TEXT("https://prts.wiki/w/");
 	rurl += url;
-	rurl += TEXT("&action=edit");
-	if(!m_issource.GetCheck()) m_webbrowser.Navigate(rurl, &noArg, &noArg, &noArg, &noArg);
+	//rurl += TEXT("&action=edit");
+	cururl = rurl;
+	UpdateData(false);
+	if (!m_issource.GetCheck()) {
+		m_webbrowser.Navigate(rurl, &noArg, &noArg, &noArg, &noArg);
+		MessageBox(TEXT("当前无法在此页面直接获取内容，请开启源代码模式"));
+	}
 	else {
 		GetSourceCode(rurl);
 	}
@@ -564,7 +575,7 @@ void C剧情处理Dlg::GetSourceCode(CString url) {
 		}
 	}
 	WriteCopyBoard(strResult);
-	CString a = TEXT("<textarea "), b = TEXT("</textarea");
+	CString a = TEXT("<script type=\"csv\" id=\"datas_txt\">") , b = TEXT("</script>");
 	int nStartA = strResult.Find(a);
 	if (nStartA == -1) {
 		MessageBox(TEXT("不存在可用的文本，请检查网页内容！"));
@@ -594,4 +605,11 @@ void C剧情处理Dlg::GetSourceCode(CString url) {
 	sendmessage += TEXT("\n剧情处理完成，已复制到剪贴板");
 	if (m_boxnotice.GetCheck()) MessageBox(sendmessage);
 	OnBnClickedButton5();
+}
+
+
+
+void C剧情处理Dlg::OnStnClickedCurtext()
+{
+	// TODO: 在此添加控件通知处理程序代码
 }
