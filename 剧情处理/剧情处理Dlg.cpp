@@ -53,6 +53,7 @@ void CAboutDlg::DoDataExchange(CDataExchange* pDX)
 }
 
 BEGIN_MESSAGE_MAP(CAboutDlg, CDialogEx)
+	
 END_MESSAGE_MAP()
 
 
@@ -109,6 +110,7 @@ BEGIN_MESSAGE_MAP(C剧情处理Dlg, CDialogEx)
 	ON_STN_CLICKED(IDC_LINENUM, &C剧情处理Dlg::OnStnClickedLinenum)
 	ON_STN_CLICKED(IDC_CurTEXT, &C剧情处理Dlg::OnStnClickedCurtext)
 	ON_BN_CLICKED(IDC_BUTTON6, &C剧情处理Dlg::OnBnClickedButton6)
+	ON_MESSAGE(WM_FETCH_COMPLETE, OnFetchComplete)
 END_MESSAGE_MAP()
 
 
@@ -735,3 +737,154 @@ void C剧情处理Dlg::OnBnClickedButton6()
 	// TODO: 在此添加控件通知处理程序代码
 	HINSTANCE result = ShellExecute(NULL, _T("open"), cururl, NULL, NULL, SW_SHOWNORMAL);
 }
+
+
+UINT C剧情处理Dlg::AsyncFetchThreadProc(LPVOID pParam)
+{
+	// 获取线程参数
+	std::unique_ptr<AsyncFetchData> pData(static_cast<AsyncFetchData*>(pParam));
+	C剧情处理Dlg* pThis = pData->pThis;
+	CString url = pData->url;
+
+	CString strResult;
+	bool bSuccess = false;
+	int linenum = 0;
+	CString afterhand;
+
+	// 初始化WinINet
+	HINTERNET hInternet = InternetOpen(
+		_T("MFC_FetchAgent"),
+		INTERNET_OPEN_TYPE_DIRECT,
+		NULL,
+		NULL,
+		0
+	);
+
+	if (hInternet)
+	{
+		// 设置请求标志
+		DWORD dwFlags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE;
+
+		// 自动识别HTTPS
+		if (url.Left(8) == _T("https://")) {
+			dwFlags |= INTERNET_FLAG_SECURE;
+		}
+
+		// 打开URL连接
+		HINTERNET hUrl = InternetOpenUrl(
+			hInternet,
+			url,
+			NULL,
+			0,
+			dwFlags,
+			0
+		);
+
+		if (hUrl)
+		{
+			// 读取数据到CString
+			std::string rawData;
+			char buffer[4096];
+			DWORD dwRead = 0;
+
+			while (InternetReadFile(hUrl, buffer, sizeof(buffer), &dwRead) && dwRead > 0)
+			{
+				rawData.append(buffer, dwRead);
+			}
+
+			// 清理资源
+			InternetCloseHandle(hUrl);
+
+			if (!rawData.empty())
+			{
+				int wideSize = MultiByteToWideChar(
+					CP_UTF8,
+					0,
+					rawData.data(),
+					rawData.size(),
+					NULL,
+					0
+				);
+
+				if (wideSize > 0)
+				{
+					std::wstring wstr(wideSize, 0);
+					MultiByteToWideChar(
+						CP_UTF8,
+						0,
+						rawData.data(),
+						rawData.size(),
+						&wstr[0],
+						wideSize
+					);
+					strResult = wstr.c_str();
+					bSuccess = true;
+				}
+			}
+		}
+		InternetCloseHandle(hInternet);
+	}
+
+	if (bSuccess)
+	{
+		CString a = TEXT("<script type=\"csv\" id=\"datas_txt\">"), b = TEXT("</script>");
+		int nStartA = strResult.Find(a);
+
+		if (nStartA != -1)
+		{
+			// 计算实际截取起始位置（a之后）
+			int nStartPos = nStartA + a.GetLength();
+
+			if (nStartPos < strResult.GetLength())
+			{
+				// 查找结束位置b（从nStartPos开始）
+				int nEndB = strResult.Find(b, nStartPos);
+
+				if (nEndB != -1)
+				{
+					CString result = strResult.Mid(nStartPos, nEndB - nStartPos);
+					HANDLEER hand(result);
+					afterhand = hand.afterhand;
+					linenum = hand.linenum;
+				}
+			}
+		}
+	}
+
+	// 发送消息到主线程处理结果
+	if (pThis && pThis->GetSafeHwnd())
+	{
+		pThis->PostMessage(WM_FETCH_COMPLETE,
+			bSuccess ? 1 : 0,
+			reinterpret_cast<LPARAM>(new AsyncResult(bSuccess, url, afterhand, linenum)));
+	}
+
+	return 0;
+}
+
+// 在对话框类中添加消息处理
+
+
+LRESULT C剧情处理Dlg::OnFetchComplete(WPARAM wParam, LPARAM lParam)
+{
+	std::unique_ptr<AsyncResult> pResult(reinterpret_cast<AsyncResult*>(lParam));
+
+	if (wParam) // 成功
+	{
+		WriteCopyBoard(pResult->afterhand);
+		CString sendmessage = m_url;
+		char len[10];
+		sprintf(len, "%d", pResult->linenum);
+		sendmessage += len;
+		sendmessage += TEXT("\n剧情处理完成，已复制到剪贴板");
+		if (m_boxnotice.GetCheck()) MessageBox(sendmessage);
+		OnBnClickedButton5();
+	}
+	else
+	{
+		MessageBox(TEXT("获取网页内容失败"));
+	}
+
+	return 0;
+}
+

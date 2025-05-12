@@ -11,7 +11,7 @@
 #include <wil/com.h>
 #include "WebView2.h"
 #include "handler.h"
-
+#define WM_FETCH_COMPLETE (WM_USER + 100) 
 // C剧情处理Dlg 对话框
 class C剧情处理Dlg : public CDialogEx
 {
@@ -88,5 +88,28 @@ public:
 	void clear(int mode);
 
 	afx_msg void OnBnClickedButton6();
+	afx_msg LRESULT OnFetchComplete(WPARAM wParam, LPARAM lParam);
+	UINT AsyncFetchThreadProc(LPVOID pParam);
 };
 
+// 辅助类定义
+class AsyncFetchData
+{
+public:
+	C剧情处理Dlg* pThis;
+	CString url;
+
+	AsyncFetchData(C剧情处理Dlg* p, const CString& u) : pThis(p), url(u) {}
+};
+
+class AsyncResult
+{
+public:
+	bool bSuccess;
+	CString url;
+	CString afterhand;
+	int linenum;
+
+	AsyncResult(bool success, const CString& u, const CString& ah, int ln)
+		: bSuccess(success), url(u), afterhand(ah), linenum(ln) {}
+};
