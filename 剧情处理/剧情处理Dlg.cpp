@@ -1,7 +1,9 @@
 ﻿
 // 剧情处理Dlg.cpp: 实现文件
 //
-
+#include <shellapi.h>
+#include <functional>
+#include <atlcomcli.h> 
 #include "pch.h"
 #include "framework.h"
 #include "剧情处理.h"
@@ -13,6 +15,7 @@
 #include <atlconv.h>
 #include <vector>
 #include <wininet.h>
+#include "WebView2.h"
 
 #pragma comment(lib, "wininet.lib")
 #ifdef _DEBUG
@@ -105,6 +108,7 @@ BEGIN_MESSAGE_MAP(C剧情处理Dlg, CDialogEx)
 	ON_EN_CHANGE(IDC_EDIT3, &C剧情处理Dlg::OnEnChangeEdit3)
 	ON_STN_CLICKED(IDC_LINENUM, &C剧情处理Dlg::OnStnClickedLinenum)
 	ON_STN_CLICKED(IDC_CurTEXT, &C剧情处理Dlg::OnStnClickedCurtext)
+	ON_BN_CLICKED(IDC_BUTTON6, &C剧情处理Dlg::OnBnClickedButton6)
 END_MESSAGE_MAP()
 
 
@@ -113,7 +117,26 @@ END_MESSAGE_MAP()
 BOOL C剧情处理Dlg::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
-
+	// 初始化 COM
+	CoInitialize(NULL);
+	if (m_webViewHwnd) {
+		::SetWindowPos(
+			m_webViewHwnd,       // WebView2的窗口句柄
+			HWND_TOPMOST,        // 置于所有窗口之上
+			0, 0, 0, 0,          // 忽略位置和大小调整
+			SWP_NOMOVE | SWP_NOSIZE // 保持现有位置和大小
+		);
+	}
+	// 传入窗口句柄
+	InitWebView2(this->GetSafeHwnd());
+	if (m_webViewHwnd) {
+		::SetWindowPos(
+			m_webViewHwnd,       // WebView2的窗口句柄
+			HWND_TOPMOST,        // 置于所有窗口之上
+			0, 0, 0, 0,          // 忽略位置和大小调整
+			SWP_NOMOVE | SWP_NOSIZE // 保持现有位置和大小
+		);
+	}
 	// 将“关于...”菜单项添加到系统菜单中。
 
 	// IDM_ABOUTBOX 必须在系统命令范围内。
@@ -141,10 +164,7 @@ BOOL C剧情处理Dlg::OnInitDialog()
 
 	// TODO: 在此添加额外的初始化代码
 
-	m_webbrowser.Navigate(TEXT("https://prts.wiki/w/%E5%89%A7%E6%83%85%E4%B8%80%E8%A7%88"), &noArg, &noArg, &noArg, &noArg);
-	m_webbrowser.put_Silent(TRUE);
-	SetIEZoomPercent(90);
-	OnBnClickedButton5();
+	clear(0);
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -222,13 +242,15 @@ void C剧情处理Dlg::OnBnClickedButton1()
 		url.Replace(TEXT(" "), TEXT("_"));
 	}
 	rurl = TEXT("https://prts.wiki/w/");
+	if (!m_issource.GetCheck()) rurl = TEXT("https://prts.wiki/index.php?title=");
 	rurl += url;
-	//rurl += TEXT("&action=edit");
+	if(!m_issource.GetCheck()) rurl += TEXT("&action=edit");
+	NavigateToURL((LPCWSTR)rurl);
 	cururl = rurl;
 	UpdateData(false);
 	if (!m_issource.GetCheck()) {
-		m_webbrowser.Navigate(rurl, &noArg, &noArg, &noArg, &noArg);
-		MessageBox(TEXT("当前无法在此页面直接获取内容，请开启源代码模式"));
+		//m_webbrowser.Navigate(rurl, &noArg, &noArg, &noArg, &noArg);
+		//MessageBox(TEXT("当前无法在此页面直接获取内容，请开启源代码模式"));
 	}
 	else {
 		GetSourceCode(rurl);
@@ -252,51 +274,9 @@ void C剧情处理Dlg::OnDocumentComplete(LPDISPATCH pDisp, VARIANT* URL)
 	}
 }
 
-CString C剧情处理Dlg::GetSelectedText()
-{
-	CString strResult;
-	if (m_pDocument2)
-	{
-		CComPtr<IHTMLSelectionObject> spSelection;
-		HRESULT hr = m_pDocument2->get_selection(&spSelection);
-		if (SUCCEEDED(hr) && spSelection)
-		{
-			CComPtr<IDispatch> spRange;
-			hr = spSelection->createRange(&spRange);
-			if (SUCCEEDED(hr) && spRange)
-			{
-				CComQIPtr<IHTMLElement> spElement = spRange;
-				if (spElement)
-				{
-					CComPtr<IHTMLElement> spParentElement;
-					hr = spElement->get_parentElement(&spParentElement);
-					if (SUCCEEDED(hr) && spParentElement)
-					{
-						CComBSTR bstrText;
-						hr = spParentElement->get_innerText(&bstrText);
-						if (SUCCEEDED(hr))
-						{
-							strResult = bstrText;
-						}
-					}
-				}
-				else
-				{
-					CComQIPtr<IHTMLTxtRange> spTxtRange = spRange;
-					if (spTxtRange)
-					{
-						CComBSTR bstrText;
-						hr = spTxtRange->get_text(&bstrText);
-						if (SUCCEEDED(hr))
-						{
-							strResult = bstrText;
-						}
-					}
-				}
-			}
-		}
-	}
-	return strResult;
+CString C剧情处理Dlg::GetSelectedText() {
+	MessageBox(TEXT("**功能正在维护！**"));
+	return TEXT("**功能正在维护！**");
 }
 
 void C剧情处理Dlg::OnBnClickedButton2()
@@ -416,23 +396,7 @@ void C剧情处理Dlg::OnBnClickedButton4()
 void C剧情处理Dlg::OnBnClickedButton5()
 {
 	// TODO: 在此添加控件通知处理程序代码
-	m_webbrowser.Navigate(TEXT("https://prts.wiki/w/%E5%89%A7%E6%83%85%E4%B8%80%E8%A7%88"), &noArg, &noArg, &noArg, &noArg);
-	m_webbrowser.put_Silent(TRUE);
-	m_needend.SetCheck(true);
-	m_isjuqing.SetCheck(true);
-	m_boxnotice.SetCheck(true);
-	DragAcceptFiles(true);
-	m_readfile.ShowWindow(false);
-	m_res_web.SetCheck(true);
-	m_res_file.EnableWindow(false);
-	m_res_file.SetCheck(false);
-	m_intro.ShowWindow(true);
-	m_issource.SetCheck(true);
-	m_url = TEXT("");
-	m_adddescription = TEXT("");
-	linenum = TEXT("字数:0");
-	m_text = TEXT("");
-	UpdateData(false);
+	clear(1);
 }
 
 void C剧情处理Dlg::OnDropFiles(HDROP hDropInfo)
@@ -612,4 +576,162 @@ void C剧情处理Dlg::GetSourceCode(CString url) {
 void C剧情处理Dlg::OnStnClickedCurtext()
 {
 	// TODO: 在此添加控件通知处理程序代码
+}
+
+void C剧情处理Dlg::InitWebView2(HWND hwnd) {
+	CreateCoreWebView2EnvironmentWithOptions(
+		nullptr, nullptr, nullptr,
+		Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
+			[this, hwnd](HRESULT result, ICoreWebView2Environment* env) -> HRESULT {
+				if (env) {
+					env->CreateCoreWebView2Controller(hwnd,
+						Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+							[this](HRESULT result, ICoreWebView2Controller* controller) -> HRESULT {
+								if (controller) {
+									this->webViewController = controller;
+									controller->get_CoreWebView2(&(this->webView));
+									controller->get_ParentWindow(&m_webViewHwnd);
+									// 设置 WebView2 的大小
+									RECT bounds = {
+										0,   // 左边距50像素
+										250,   // 上边距50像素
+										2000,  // 右边距（50+800）
+										1500   // 下边距（50+600）
+									};
+									controller->put_Bounds(bounds);
+									// 加载网页
+									this->webView->Navigate(L"https://prts.wiki/w/%E5%89%A7%E6%83%85%E4%B8%80%E8%A7%88");
+								}
+								return S_OK;
+							}).Get());
+				}
+				return S_OK;
+			}).Get());
+}
+
+void C剧情处理Dlg::NavigateToURL(const std::wstring& url) {
+	if (webView) {
+		// 转换为 LPCWSTR 并导航
+		webView->Navigate(url.c_str());
+	}
+	else {
+		AfxMessageBox(L"WebView2 未初始化！");
+	}
+}
+
+void C剧情处理Dlg::clear(int mode) {
+	if(mode) NavigateToURL(L"https://prts.wiki/w/%E5%89%A7%E6%83%85%E4%B8%80%E8%A7%88");
+	m_needend.SetCheck(true);
+	m_isjuqing.SetCheck(true);
+	m_boxnotice.SetCheck(true);
+	DragAcceptFiles(true);
+	m_readfile.ShowWindow(false);
+	m_res_web.SetCheck(true);
+	m_res_file.EnableWindow(false);
+	m_res_file.SetCheck(false);
+	m_intro.ShowWindow(true);
+	m_issource.SetCheck(true);
+	m_url = TEXT("");
+	m_adddescription = TEXT("");
+	linenum = TEXT("字数:0");
+	m_text = TEXT("");
+	UpdateData(false);
+}
+
+
+CString C剧情处理Dlg::GetSelectedTextSync()
+{
+	// 1. 检查WebView2是否有效
+	if (!webView || !webViewController) {
+		return _T("WebView2未初始化");
+	}
+
+	// 2. 创建事件对象（必须手动重置）
+	HANDLE hEvent = ::CreateEvent(nullptr, TRUE, FALSE, nullptr);
+	if (!hEvent) {
+		return _T("创建事件失败");
+	}
+
+	// 使用 shared_ptr 管理 result，确保 Lambda 生命周期安全
+	auto resultPtr = std::make_shared<CString>();
+	HRESULT hr = S_OK;
+
+	auto callback = Microsoft::WRL::Callback<
+		ICoreWebView2ExecuteScriptCompletedHandler>(
+			[hEvent, resultPtr](HRESULT errorCode, LPCWSTR jsResult) -> HRESULT
+			{
+				if (SUCCEEDED(errorCode) && jsResult)
+				{
+					std::wstring jsonStr(jsResult);
+
+					// 去掉前后引号
+					if (jsonStr.length() >= 2 &&
+						jsonStr.front() == L'"' &&
+						jsonStr.back() == L'"')
+					{
+						jsonStr = jsonStr.substr(1, jsonStr.length() - 2);
+					}
+
+					// 处理转义字符
+					std::wstring unescaped;
+					for (size_t i = 0; i < jsonStr.length(); ++i)
+					{
+						if (jsonStr[i] == L'\\' && i + 1 < jsonStr.length())
+						{
+							++i;
+							switch (jsonStr[i]) {
+							case L'"': unescaped.push_back(L'"'); break;
+							case L'\\': unescaped.push_back(L'\\'); break;
+							case L'/': unescaped.push_back(L'/'); break;
+							case L'b': unescaped.push_back(L'\b'); break;
+							case L'f': unescaped.push_back(L'\f'); break;
+							case L'n': unescaped.push_back(L'\n'); break;
+							case L'r': unescaped.push_back(L'\r'); break;
+							case L't': unescaped.push_back(L'\t'); break;
+							default: unescaped.push_back(jsonStr[i]); break;
+							}
+						}
+						else
+						{
+							unescaped.push_back(jsonStr[i]);
+						}
+					}
+
+					*resultPtr = CString(unescaped.c_str());
+				}
+				::SetEvent(hEvent); // 通知完成
+				return S_OK;
+			});
+
+	// 4. 执行JS
+	hr = webView->ExecuteScript(
+		L"(function(){ "
+		L"  try { "
+		L"    const sel = window.getSelection(); "
+		L"    return sel ? sel.toString() : ''; "
+		L"  } catch(e) { return ''; } "
+		L"})();",
+		callback.Get());
+
+	if (FAILED(hr)) {
+		::CloseHandle(hEvent);
+		return _T("JS执行失败");
+	}
+
+	// 5. 等待结果（带超时）
+	DWORD waitResult = ::WaitForSingleObject(hEvent, 100000);
+	::CloseHandle(hEvent);
+
+	if (waitResult == WAIT_TIMEOUT) {
+		return _T("操作超时");
+	}
+
+	return *resultPtr;  // 安全返回
+}
+
+
+void C剧情处理Dlg::OnBnClickedButton6()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	HINSTANCE result = ShellExecute(NULL, _T("open"), cururl, NULL, NULL, SW_SHOWNORMAL);
 }

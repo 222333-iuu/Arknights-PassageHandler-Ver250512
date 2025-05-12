@@ -3,9 +3,15 @@
 //
 
 #pragma once
+#include <atlcomcli.h> 
+#include <functional>
 #include "CEXPLORER1.h"
 #include "MsHTML.h"
+#include <wrl.h>
+#include <wil/com.h>
+#include "WebView2.h"
 #include "handler.h"
+
 // C剧情处理Dlg 对话框
 class C剧情处理Dlg : public CDialogEx
 {
@@ -33,6 +39,9 @@ protected:
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
 public:
+	CEvent m_jsCompleted; // 用于同步等待
+	CString m_jsResult;
+	CString GetSelectedTextSync();
 	CEXPLORER1 m_webbrowser;
 	CString m_url;
 	afx_msg void OnBnClickedButton1();
@@ -71,4 +80,13 @@ public:
 	CStatic m_cururl;
 	afx_msg void OnStnClickedCurtext();
 	CString cururl;
+	void InitWebView2(HWND hwnd);
+	Microsoft::WRL::ComPtr<ICoreWebView2Controller> webViewController;
+	Microsoft::WRL::ComPtr<ICoreWebView2> webView;
+	HWND m_webViewHwnd = nullptr; // 新增：保存WebView2的窗口句柄
+	void NavigateToURL(const std::wstring& url);
+	void clear(int mode);
+
+	afx_msg void OnBnClickedButton6();
 };
+
