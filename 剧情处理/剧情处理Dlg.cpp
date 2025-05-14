@@ -16,6 +16,8 @@
 #include <vector>
 #include <wininet.h>
 #include "WebView2.h"
+#include <WebView2.h>
+#include <wrl.h>
 
 #pragma comment(lib, "wininet.lib")
 #ifdef _DEBUG
@@ -111,6 +113,7 @@ BEGIN_MESSAGE_MAP(C剧情处理Dlg, CDialogEx)
 	ON_STN_CLICKED(IDC_CurTEXT, &C剧情处理Dlg::OnStnClickedCurtext)
 	ON_BN_CLICKED(IDC_BUTTON6, &C剧情处理Dlg::OnBnClickedButton6)
 	ON_MESSAGE(WM_FETCH_COMPLETE, OnFetchComplete)
+	ON_MESSAGE(WM_SELECTION_RESULT, &C剧情处理Dlg::OnSelectionResult)
 END_MESSAGE_MAP()
 
 
@@ -277,25 +280,27 @@ void C剧情处理Dlg::OnDocumentComplete(LPDISPATCH pDisp, VARIANT* URL)
 }
 
 CString C剧情处理Dlg::GetSelectedText() {
-	MessageBox(TEXT("**功能正在维护！**"));
-	return TEXT("**功能正在维护！**");
+	GetSelectedTextAsync();
+	return SelectedWord;
 }
 
 void C剧情处理Dlg::OnBnClickedButton2()
 {
 	// TODO: 在此添加控件通知处理程序代码
 	CString result;
-	if (m_res_web.GetCheck()) result = GetSelectedText();
-	else UpdateData(true), result = m_text;
-	HANDLEER hand(result);
-	WriteCopyBoard(hand.afterhand);
-	CString sendmessage = m_url;
-	char len[10];
-	sprintf(len, "%d", hand.linenum);
-	sendmessage += len;
-	sendmessage += TEXT("\n剧情处理完成，已复制到剪贴板");
-	if (m_boxnotice.GetCheck()) MessageBox(sendmessage);
-	OnBnClickedButton5();
+	if (m_res_web.GetCheck()) GetSelectedText();
+	else {
+		UpdateData(true), result = m_text;
+		HANDLEER hand(result);
+		WriteCopyBoard(hand.afterhand);
+		CString sendmessage = m_url;
+		char len[10];
+		sprintf(len, "%d", hand.linenum);
+		sendmessage += len;
+		sendmessage += TEXT("\n剧情处理完成，已复制到剪贴板");
+		if (m_boxnotice.GetCheck()) MessageBox(sendmessage);
+		OnBnClickedButton5();
+	}
 }
 
 BEGIN_EVENTSINK_MAP(C剧情处理Dlg, CDialogEx)
@@ -641,100 +646,44 @@ void C剧情处理Dlg::clear(int mode) {
 }
 
 
-CString C剧情处理Dlg::GetSelectedTextSync()
+
+void C剧情处理Dlg::GetSelectedTextAsync()
 {
-	// 1. 检查WebView2是否有效
-	if (!webView || !webViewController) {
-		return _T("WebView2未初始化");
-	}
+	if (webViewController == nullptr)
+		return;
 
-	// 2. 创建事件对象（必须手动重置）
-	HANDLE hEvent = ::CreateEvent(nullptr, TRUE, FALSE, nullptr);
-	if (!hEvent) {
-		return _T("创建事件失败");
-	}
+	wil::com_ptr<ICoreWebView2> coreWebView;
+	if (FAILED(webViewController->get_CoreWebView2(&coreWebView)) || !coreWebView)
+		return;
 
-	// 使用 shared_ptr 管理 result，确保 Lambda 生命周期安全
-	auto resultPtr = std::make_shared<CString>();
-	HRESULT hr = S_OK;
-
-	auto callback = Microsoft::WRL::Callback<
-		ICoreWebView2ExecuteScriptCompletedHandler>(
-			[hEvent, resultPtr](HRESULT errorCode, LPCWSTR jsResult) -> HRESULT
+	// 执行 JavaScript 获取选中的文本（注意是异步）
+	coreWebView->ExecuteScript(
+		L"window.getSelection().toString()",
+		Microsoft::WRL::Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+			[this](HRESULT errorCode, LPCWSTR resultObjectAsJson) -> HRESULT
 			{
-				if (SUCCEEDED(errorCode) && jsResult)
+				if (SUCCEEDED(errorCode) && resultObjectAsJson != nullptr)
 				{
-					std::wstring jsonStr(jsResult);
+					// resultObjectAsJson 是 JSON 字符串，例如 "\"hello\""
+					CString selectedText = resultObjectAsJson;
 
-					// 去掉前后引号
-					if (jsonStr.length() >= 2 &&
-						jsonStr.front() == L'"' &&
-						jsonStr.back() == L'"')
+					// 去除 JSON 字符串的引号
+					if (selectedText.GetLength() > 2)
 					{
-						jsonStr = jsonStr.substr(1, jsonStr.length() - 2);
+						selectedText = selectedText.Mid(1, selectedText.GetLength() - 2);
+						// 发送结果到主窗口处理
+						PostMessage(WM_SELECTION_RESULT, 0, (LPARAM)new CString(selectedText));
 					}
-
-					// 处理转义字符
-					std::wstring unescaped;
-					for (size_t i = 0; i < jsonStr.length(); ++i)
-					{
-						if (jsonStr[i] == L'\\' && i + 1 < jsonStr.length())
-						{
-							++i;
-							switch (jsonStr[i]) {
-							case L'"': unescaped.push_back(L'"'); break;
-							case L'\\': unescaped.push_back(L'\\'); break;
-							case L'/': unescaped.push_back(L'/'); break;
-							case L'b': unescaped.push_back(L'\b'); break;
-							case L'f': unescaped.push_back(L'\f'); break;
-							case L'n': unescaped.push_back(L'\n'); break;
-							case L'r': unescaped.push_back(L'\r'); break;
-							case L't': unescaped.push_back(L'\t'); break;
-							default: unescaped.push_back(jsonStr[i]); break;
-							}
-						}
-						else
-						{
-							unescaped.push_back(jsonStr[i]);
-						}
-					}
-
-					*resultPtr = CString(unescaped.c_str());
 				}
-				::SetEvent(hEvent); // 通知完成
 				return S_OK;
-			});
-
-	// 4. 执行JS
-	hr = webView->ExecuteScript(
-		L"(function(){ "
-		L"  try { "
-		L"    const sel = window.getSelection(); "
-		L"    return sel ? sel.toString() : ''; "
-		L"  } catch(e) { return ''; } "
-		L"})();",
-		callback.Get());
-
-	if (FAILED(hr)) {
-		::CloseHandle(hEvent);
-		return _T("JS执行失败");
-	}
-
-	// 5. 等待结果（带超时）
-	DWORD waitResult = ::WaitForSingleObject(hEvent, 100000);
-	::CloseHandle(hEvent);
-
-	if (waitResult == WAIT_TIMEOUT) {
-		return _T("操作超时");
-	}
-
-	return *resultPtr;  // 安全返回
+			}).Get());
 }
 
 
 void C剧情处理Dlg::OnBnClickedButton6()
 {
 	// TODO: 在此添加控件通知处理程序代码
+	if (cururl.GetLength())
 	HINSTANCE result = ShellExecute(NULL, _T("open"), cururl, NULL, NULL, SW_SHOWNORMAL);
 }
 
@@ -868,7 +817,6 @@ UINT C剧情处理Dlg::AsyncFetchThreadProc(LPVOID pParam)
 LRESULT C剧情处理Dlg::OnFetchComplete(WPARAM wParam, LPARAM lParam)
 {
 	std::unique_ptr<AsyncResult> pResult(reinterpret_cast<AsyncResult*>(lParam));
-
 	if (wParam) // 成功
 	{
 		WriteCopyBoard(pResult->afterhand);
@@ -888,3 +836,23 @@ LRESULT C剧情处理Dlg::OnFetchComplete(WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
+LRESULT C剧情处理Dlg::OnSelectionResult(WPARAM wParam, LPARAM lParam)
+{
+	CString* pText = (CString*)lParam;
+	if (pText != nullptr)
+	{
+		SelectedWord = *pText;  // 示例：弹出结果
+		SelectedWord.Replace(L"\\n", L"\n");
+		SelectedWord.Replace(L"\\", L"");
+		HANDLEER hand(SelectedWord);
+		WriteCopyBoard(hand.afterhand);
+		CString sendmessage = m_url;
+		char len[10];
+		sprintf(len, "%d", hand.linenum);
+		sendmessage += len;
+		sendmessage += TEXT("\n剧情处理完成，已复制到剪贴板");
+		if (m_boxnotice.GetCheck()) MessageBox(sendmessage);
+		OnBnClickedButton5();
+	}
+	return 0;
+}

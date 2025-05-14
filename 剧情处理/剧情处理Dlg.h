@@ -12,6 +12,7 @@
 #include "WebView2.h"
 #include "handler.h"
 #define WM_FETCH_COMPLETE (WM_USER + 100) 
+#define WM_SELECTION_RESULT (WM_USER + 300)
 // C剧情处理Dlg 对话框
 class C剧情处理Dlg : public CDialogEx
 {
@@ -41,7 +42,7 @@ protected:
 public:
 	CEvent m_jsCompleted; // 用于同步等待
 	CString m_jsResult;
-	CString GetSelectedTextSync();
+	void GetSelectedTextAsync();
 	CEXPLORER1 m_webbrowser;
 	CString m_url;
 	afx_msg void OnBnClickedButton1();
@@ -90,6 +91,8 @@ public:
 	afx_msg void OnBnClickedButton6();
 	afx_msg LRESULT OnFetchComplete(WPARAM wParam, LPARAM lParam);
 	UINT AsyncFetchThreadProc(LPVOID pParam);
+	afx_msg LRESULT OnSelectionResult(WPARAM, LPARAM lParam);
+	CString SelectedWord;
 };
 
 // 辅助类定义
